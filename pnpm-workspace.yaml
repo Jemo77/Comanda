@@ -1,0 +1,5 @@
+packages:
+  - apps/*
+  - packages/*
+
+# Root is not a package manager project itself beyond devDeps.

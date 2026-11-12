@@ -1,0 +1,1 @@
+DROP FUNCTION IF EXISTS auth_lookup_refresh_token(text);

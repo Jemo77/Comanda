@@ -1,0 +1,303 @@
+name: CI
+
+# El pipeline corre en tres etapas porque los tests de integracion necesitan
+# PostgreSQL real: la RLS es una funcion del motor y ningun mock la reproduce.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Secretos de test. Son publicos a proposito: no protegen nada, y asi el
+  # pipeline corre en forks sin configurar nada.
+  JWT_ACCESS_SECRET: ci-access-secret-que-no-protege-nada-00000000
+  PIN_PEPPER: ci-pin-pepper-que-no-protege-nada-00
+
+jobs:
+  calidad:
+    name: Lint, typecheck y unitarios
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Formato
+        run: pnpm format:check
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Tests unitarios
+        run: pnpm --filter '!@comanda/api' test
+
+      - name: Tests unitarios de la API (sin base de datos)
+        run: pnpm --filter @comanda/api exec vitest run test/unit
+
+      - name: Migraciones reversibles (Postgres en WASM)
+        # Las migraciones se ejecutan contra PGlite, un Postgres compilado a WASM.
+        # Corre en la etapa de calidad, sin servicio: una migracion con un error de
+        # sintaxis no falla en el typecheck, falla en el deploy con la base a medias.
+        # No reemplaza la etapa de integracion (PGlite no tiene roles, asi que la
+        # RLS queda sin ejercitar), pero hace que el error aparezca temprano.
+        run: pnpm --filter @comanda/api exec vitest run test/migrations.test.ts
+
+  integracion:
+    name: Tests de integracion (PostgreSQL)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: comanda
+          POSTGRES_INITDB_ARGS: '--locale=C.UTF-8'
+        ports:
+          - 5432:5432
+        # Un healthcheck propio: el de la imagen acepta conexiones antes de que
+        # el initdb haya terminado de crear los roles, y las migraciones fallarian
+        # con "permission denied for schema public".
+        options: >-
+          --health-cmd "pg_isready -U postgres -d comanda"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Crear los roles de base de datos
+        run: |
+          PGPASSWORD=postgres psql -h localhost -U postgres -d comanda \
+            -v dbname=comanda -f infra/docker/postgres/init/01-roles.sql
+
+      - name: Migrar
+        env:
+          DATABASE_URL: postgresql://comanda_app:comanda_app_dev@localhost:5432/comanda
+          DATABASE_MIGRATIONS_URL: postgresql://comanda_migrator:comanda_migrator_dev@localhost:5432/comanda
+        run: pnpm db:migrate
+
+      - name: Seed de demo
+        env:
+          DATABASE_URL: postgresql://comanda_app:comanda_app_dev@localhost:5432/comanda
+        run: pnpm db:seed
+
+      - name: Tests
+        env:
+          # La conexion de aserciones va con el rol de la app: con un superusuario
+          # la RLS se ignoraria y los tests de aislamiento probarian un falso.
+          TEST_DATABASE_URL: postgresql://comanda_app:comanda_app_dev@localhost:5432/comanda
+          TEST_DATABASE_ADMIN_URL: postgresql://postgres:postgres@localhost:5432/comanda
+          DATABASE_URL: postgresql://comanda_app:comanda_app_dev@localhost:5432/comanda
+        run: pnpm --filter @comanda/api exec vitest run
+
+      - name: El seed es idempotente
+        env:
+          DATABASE_URL: postgresql://comanda_app:comanda_app_dev@localhost:5432/comanda
+        run: |
+          pnpm db:seed
+          pnpm db:seed
+          # Correrlo dos veces no debe duplicar ni una fila.
+          test "$(psql -h localhost -U postgres -d comanda -tAc \
+            'SELECT count(*) FROM organizations')" = "2"
+          test "$(psql -h localhost -U postgres -d comanda -tAc \
+            'SELECT count(*) FROM users')" = "8"
+
+      - name: E2E del flujo del cliente (QR → pago → cierre; takeaway → retiro)
+        # Levanta la API compilada (node dist/main.js en el puerto 3100)
+        # y pega por HTTP: es el contrato completo, no el AppModule bajo
+        # vitest. El script ya incluye el `nest build` que necesita.
+        env:
+          # La conexion de aserciones va con el rol de la app, como en
+          # la suite de integracion: con superusuario la RLS se ignora.
+          TEST_DATABASE_URL: postgresql://comanda_app:comanda_app_dev@localhost:5432/comanda
+          TEST_DATABASE_ADMIN_URL: postgresql://postgres:postgres@localhost:5432/comanda
+        run: pnpm test:e2e
+
+      - name: Reversibilidad de las migraciones
+        env:
+          DATABASE_ADMIN_URL: postgresql://postgres:postgres@localhost:5432/comanda
+          DATABASE_URL: postgresql://comanda_app:comanda_app_dev@localhost:5432/comanda
+          DATABASE_MIGRATIONS_URL: postgresql://comanda_migrator:comanda_migrator_dev@localhost:5432/comanda
+        run: |
+          # El plan exige migraciones reversibles. Se comprueba de verdad: se baja
+          # a un estado limpio y se vuelve a subir.
+          pnpm --filter @comanda/api db:reset
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm build
+
+      - name: Presupuesto de bundle del POS
+        # El plan fija < 300 KB gzip para el bundle inicial. Es un limite, no una
+        # sugerencia: el POS se descarga una vez y tiene que arrancar en un local
+        # con internet lenta.
+        run: |
+          set -euo pipefail
+          budget=307200  # 300 KB
+          actual=$(gzip -c apps/pos/dist/assets/*.js 2>/dev/null | wc -c || echo 0)
+          if [ "$actual" -gt "$budget" ]; then
+            echo "Bundle del POS: ${actual} bytes gzip, excede el presupuesto de ${budget}"
+            exit 1
+          fi
+          echo "Bundle del POS: ${actual} bytes gzip (presupuesto ${budget})"
+
+  e2e:
+    name: E2E del POS (offline)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: comanda
+          POSTGRES_INITDB_ARGS: '--locale=C.UTF-8'
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d comanda"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 30
+
+    env:
+      JWT_ACCESS_SECRET: ci-access-secret-que-no-protege-nada-00000000
+      PIN_PEPPER: ci-pin-pepper-que-no-protege-nada-00
+      API_URL: http://localhost:3000/api/v1
+      POS_URL: http://localhost:5173
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Crear los roles de base de datos
+        run: |
+          PGPASSWORD=postgres psql -h localhost -U postgres -d comanda \
+            -v dbname=comanda -f infra/docker/postgres/init/01-roles.sql
+
+      - name: Migrar y sembrar
+        env:
+          DATABASE_URL: postgresql://comanda_app:comanda_app_dev@localhost:5432/comanda
+          DATABASE_MIGRATIONS_URL: postgresql://comanda_migrator:comanda_migrator_dev@localhost:5432/comanda
+        run: |
+          pnpm db:migrate
+          pnpm db:seed
+
+      - name: Instalar el navegador de Playwright
+        run: pnpm --filter @comanda/pos exec playwright install --with-deps chromium
+
+      - name: Levantar API y POS
+        run: |
+          pnpm build
+          # `node dist/main.js` y no `nest start`: el E2E necesita un proceso ya
+          # compilado, y `nest start` levanta un watcher que no termina solo.
+          (
+            cd apps/api
+            DATABASE_URL=postgresql://comanda_app:comanda_app_dev@localhost:5432/comanda \
+            node dist/main.js &
+          )
+          (
+            cd apps/pos
+            VITE_API_URL=http://localhost:3000/api/v1 \
+            npx vite --port 5173 --host 0.0.0.0 &
+          )
+          # El E2E arranca ni bien los dos responden. Sin esto falla por tiempo de
+          # espera y el error dice "connection refused", que no dice que es arranque.
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:3000/api/v1/health > /dev/null \
+              && curl -sf http://localhost:5173/ > /dev/null; then
+              echo "API y POS listos"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "La API o el POS no levantaron"
+          exit 1
+
+      - name: E2E
+        run: pnpm --filter @comanda/pos exec playwright test --trace=off
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: apps/pos/playwright-report
+          retention-days: 7
+
+  seguridad:
+    name: Seguridad
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Sin vulnerabilidades altas en dependencias de produccion
+        run: pnpm audit --prod --audit-level high
+
+      - name: Commits convencionales
+        uses: wagoid/commitlint-github-action@v6

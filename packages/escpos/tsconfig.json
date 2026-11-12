@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    // ESM sin `moduleResolution: Node`: el paquete lo consume Vite (POS) y Nest
+    // CommonJS (API). Con `Bundler` se leen los `exports` de los dos lados, que es
+    // lo que evita el "Cannot find module" en cuanto uno de los dos paquetes cambia.
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2023", "DOM"],
+    "types": ["vitest/globals", "node"]
+  },
+  "include": ["src/**/*.ts"]
+}

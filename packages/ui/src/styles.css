@@ -1,0 +1,193 @@
+/**
+ * Tokens "Enamel & Ink".
+ *
+ * Ver docs/DESIGN.md. Todos los valores salen de ahi; este archivo es la unica
+ * fuente ejecutable, y las apps lo importan en vez de redefinir colores.
+ *
+ * El fondo NO es crema calido ni casi negro: es esmalte gris-azul, que es el
+ * material real del mostrador y el que menos cansa en un turno de 8 horas bajo
+ * luz de fluorescente.
+ */
+
+@import 'tailwindcss';
+
+@theme {
+  /* --- Superficies: esmalte, baldosa y acero --- */
+  --color-enamel: #e4e7ea;
+  --color-enamel-deep: #d7dce1;
+  --color-tile: #f2f4f6;
+  --color-tile-warm: #eceff1;
+  --color-steel: #cdd3d8;
+  --color-steel-dark: #a8b1b9;
+
+  /* --- Tinta --- */
+  --color-ink: #14181c;
+  --color-ink-soft: #5a646e;
+  --color-ink-faint: #838d96;
+
+  /* --- Acentos. azulejo y coca son excluyentes en un mismo control. --- */
+  --color-azulejo: #1f5fa9;
+  --color-azulejo-deep: #17497f;
+  --color-azulejo-soft: #dce7f4;
+  --color-coca: #c1272d;
+  --color-coca-deep: #9b1f24;
+  --color-coca-soft: #f7e2e2;
+
+  /* --- Estados, como los letreros del local --- */
+  --color-abierto: #1b7a4b;
+  --color-abierto-soft: #dcefe5;
+  --color-caution: #d89b12;
+  --color-caution-soft: #fbeed2;
+
+  /* --- Tipografia --- */
+  --font-display: 'Archivo', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', monospace;
+
+  --text-2xs: 0.6875rem; /* 11px */
+  --text-xs: 0.75rem; /* 12px */
+  --text-sm: 0.8125rem; /* 13px */
+  --text-base: 0.9375rem; /* 15px */
+  --text-lg: 1.125rem; /* 18px */
+  --text-xl: 1.375rem; /* 22px */
+  --text-2xl: 1.875rem; /* 30px */
+  --text-3xl: 2.75rem; /* 44px */
+
+  /* --- Radios: alambre de acero. El ticket no lleva radio. --- */
+  --radius-wire: 2px;
+  --radius-panel: 3px;
+
+  /* --- Sombras: minimas y solo para separar superficies superpuestas --- */
+  --shadow-lift: 0 1px 2px rgb(20 24 28 / 0.08);
+  --shadow-tray: 0 2px 8px rgb(20 24 28 / 0.12);
+
+  /* --- Foco: un unico anillo en todo el producto --- */
+  --focus-ring: 0 0 0 2px var(--color-enamel), 0 0 0 4px var(--color-azulejo);
+
+  /* --- Movimiento: solo transiciones que responden a una accion --- */
+  --ease-out-quick: cubic-bezier(0.2, 0, 0.2, 1);
+}
+
+@layer base {
+  :root {
+    color-scheme: light;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    /* El POS se usa parado y con guantes: nada deSelection azul del sistema. */
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    margin: 0;
+    background-color: var(--color-enamel);
+    color: var(--color-ink);
+    font-family: var(--font-display);
+    font-size: var(--text-base);
+    line-height: 1.5;
+    font-synthesis-weight: none;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Un unico anillo de foco en todo el producto, siempre visible. */
+  :focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring);
+    border-radius: var(--radius-wire);
+  }
+
+  :focus:not(:focus-visible) {
+    outline: none;
+  }
+
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+    color: inherit;
+  }
+
+  /* Los numeros de dinero siempre alineados: es una columna, no un texto. */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: 'tnum' 1;
+  }
+}
+
+@layer components {
+  /**
+   * Cinta de caution: el unico lugar donde se usa rayado, y solo para acciones
+   * irreversibles. Como la cinta real, no es decoracion: senala peligro.
+   */
+  .caution-tape {
+    background-image: repeating-linear-gradient(
+      -45deg,
+      var(--color-caution) 0 8px,
+      var(--color-ink) 8px 16px
+    );
+    height: 4px;
+  }
+
+  /**
+   * Guia de puntos del ticket. Separa texto y precio hasta la columna, que es
+   * exactamente lo que hace un comprobante impreso, y permite comparar importes
+   * de un vistazo sin alinear mentalmente.
+   */
+  .ticket-leader {
+    flex: 1;
+    align-self: flex-end;
+    margin-bottom: 0.28em;
+    border-bottom: 2px dotted var(--color-steel-dark);
+    min-width: 1.5rem;
+  }
+}
+
+@layer utilities {
+  /* Superficie de planilla: filas con filete, sin cards ni sombras difusas. */
+  .rule-row {
+    border-bottom: 1px solid var(--color-steel);
+  }
+
+  .rule-row:last-child {
+    border-bottom: none;
+  }
+}
+
+/**
+ * El POS se usa parado, con guantes y a Often las 3 de la manana. Las acciones
+ * principales necesitan targets de 48px reales, no nominales.
+ */
+@layer components {
+  .touch-target {
+    min-height: 48px;
+    min-width: 48px;
+  }
+}
+
+/**
+ * Reduced motion: se respeta de forma estricta. La unica animacion que queda
+ * es la que responde a una accion del usuario, y sin transicion se resuelve
+ * al instante, que es el resultado correcto.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+
+  body {
+    background: white;
+    color: black;
+  }
+}

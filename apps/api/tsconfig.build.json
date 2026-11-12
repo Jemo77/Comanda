@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    // `rootDir` explicito. Sin esto, TypeScript lo infiere como el prefijo comun
+    // de los archivos incluidos; al excluirse `test/`, ese prefijo pasa a ser `src/`
+    // y el build cae en `dist/src/main.js`. `package.json` apunta a
+    // `dist/main.js`, asi que `pnpm start` fallaba con MODULE_NOT_FOUND y el
+    // arranque del API nunca se llegaba a probar de verdad.
+    "rootDir": "src"
+  },
+  "exclude": ["test", "dist", "node_modules", "**/*.spec.ts", "**/*.test.ts"]
+}

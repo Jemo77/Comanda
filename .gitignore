@@ -1,0 +1,26 @@
+node_modules/
+dist/
+build/
+coverage/
+.next/
+out/
+*.tsbuildinfo
+
+.env
+.env.local
+.env.*.local
+!.env.example
+
+.DS_Store
+*.log
+npm-debug.log*
+.turbo/
+
+# Playwright
+test-results/
+playwright-report/
+blob-report/
+.playwright/
+
+# Local dev database / object storage volumes
+.docker-data/

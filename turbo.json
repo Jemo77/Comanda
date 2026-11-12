@@ -1,0 +1,56 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "ui": "stream",
+  "globalEnv": [
+    "NODE_ENV",
+    "DATABASE_URL",
+    "DATABASE_MIGRATIONS_URL",
+    "DATABASE_ADMIN_URL",
+    "REDIS_URL",
+    "S3_ENDPOINT",
+    "S3_BUCKET",
+    "JWT_ACCESS_SECRET",
+    "PIN_PEPPER",
+    "VITE_API_URL",
+    "NEXT_PUBLIC_API_URL",
+    "TEST_DATABASE_URL",
+    "TEST_DATABASE_ADMIN_URL",
+    "QR_TOKEN_SECRET",
+    "PAYMENT_WEBHOOK_SECRET"
+  ],
+  "globalDependencies": ["tsconfig.base.json", ".env"],
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "inputs": ["$TURBO_DEFAULT$", "!**/*.test.ts", "!**/*.spec.ts"],
+      "outputs": ["dist/**", ".next/**", "!.next/cache/**"]
+    },
+    "typecheck": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
+    "lint": {
+      "outputs": []
+    },
+    "test": {
+      "dependsOn": ["^build"],
+      "outputs": ["coverage/**"]
+    },
+    "test:coverage": {
+      "dependsOn": ["^build"],
+      "outputs": ["coverage/**"]
+    },
+    "test:e2e": {
+      "dependsOn": ["^build", "build"],
+      "outputs": []
+    },
+    "dev": {
+      "dependsOn": ["^build"],
+      "cache": false,
+      "persistent": true
+    },
+    "clean": {
+      "cache": false
+    }
+  }
+}

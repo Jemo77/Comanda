@@ -1,0 +1,10 @@
+node_modules/
+dist/
+build/
+coverage/
+.turbo/
+.next/
+*.tsbuildinfo
+docs/openapi.json
+pnpm-lock.yaml
+drizzle/meta/

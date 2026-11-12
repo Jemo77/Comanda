@@ -1,0 +1,23 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    // PGlite publica sus extensiones solo por el mapa `exports`, que la
+    // resolucion clasica no lee. El mapeo apunta al `.d.ts` que hay en `dist`, asi
+    // que el typecheck de los tests de migraciones funciona sin mover el modulo a
+    // `Node16` (que obliga a cambiar `module` y rompe el build de Nest).
+    "paths": {
+      "@electric-sql/pglite/contrib/*": ["./node_modules/@electric-sql/pglite/dist/contrib/*"]
+    },
+    "rootDir": ".",
+    "outDir": "dist",
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "strictPropertyInitialization": false,
+    "useDefineForClassFields": false,
+    "types": ["node", "vitest/globals"],
+    "isolatedModules": false
+  },
+  "include": ["src/**/*.ts", "test/**/*.ts"]
+}

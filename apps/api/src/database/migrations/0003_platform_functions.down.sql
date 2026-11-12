@@ -1,0 +1,1 @@
+DROP FUNCTION IF EXISTS platform_find_organization(text);
